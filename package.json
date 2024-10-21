@@ -1,0 +1,14 @@
+{
+  "name": "mpesa-unhash",
+  "version": "1.0.0",
+  "description": "this is simple implementation to un hash  stupid  mpesa numbers",
+  "main": "index.js",
+  "repository": "https://github.com/yunatamos/unhash-mpesa-number.git",
+  "author": "Yunat Amos <yunatamos@gmail.com>",
+  "license": "MIT",
+  "private": false,
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "mongoose": "^8.7.2"
+  }
+}
