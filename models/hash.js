@@ -7,9 +7,17 @@ const HashSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
-  hash: String,
+  hash: {
+    type: String,
+    required: true,
+    unique: true,
+  },
  // format 254722000000
-  phoneNumber: String,
+  phoneNumber: {
+    type: String,
+    required: true,
+    unique: true,
+  },
   created: {
     type: Date,
     default: Date.now,

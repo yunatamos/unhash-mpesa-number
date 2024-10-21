@@ -2,7 +2,14 @@ require('dotenv').config();
 const mongoose = require("mongoose");
 const fs = require('fs');
 const crypto = require('crypto');
-const {MONGO_URI} = process.env;
+const express = require('express');
+// Import the Hash model
+const HashModel = require('./models/hash');
+
+const app = express();
+app.use(express.json());
+
+const {MONGO_URI,PORT = 3000 } = process.env;
 
 // IIFE to give access to async/await
 (async () => {
@@ -37,7 +44,7 @@ function generateNumbers(prefix) {
 function generateHashedNumbers(numbers) {
     return numbers.map(number => {
             const hash = crypto.createHash('sha256').update(number).digest('hex');
-            return { phone: number, hash: hash };
+            return { phoneNumber: number, hash: hash };
     });
 }
 
@@ -47,20 +54,42 @@ function writeNumbersToFile(hashedNumbers, prefix) {
     console.log(`Numbers for prefix ${prefix} written to ${filename}`);
 }
 
+async function saveNumbersToMongo(hashedNumbers, prefix, batchSize) {
+    console.log(`Saving numbers for prefix ${prefix} to MongoDB...`);
+    const totalRecords = hashedNumbers.length;
+    const batches = Math.ceil(totalRecords / batchSize);
+
+    for (let i = 0; i < batches; i++) {
+        const start = i * batchSize;
+        const end = Math.min((i + 1) * batchSize, totalRecords);
+        const batch = hashedNumbers.slice(start, end);
+
+        try {
+            await HashModel.insertMany(batch, { ordered: false });
+            console.log(`Batch ${i + 1}/${batches} for prefix ${prefix} saved to MongoDB`);
+        } catch (error) {
+            console.error(`Error saving batch ${i + 1} for prefix ${prefix} to MongoDB:`, error);
+        }
+    }
+
+    console.log(`All numbers for prefix ${prefix} saved to MongoDB`);
+}
+
 function displayHelp() {
     console.log(`
 Usage: node index.js [OPTIONS]
 
 Options:
-  --generate-hashes  Generate SHA256 hashes for each number
-  --help, -h, -H     Display this help message
+  --generate-hashes           Generate SHA256 hashes for each number
+  --batch-size <number>       Set the batch size for MongoDB inserts (default: 10000)
+  --help, -h, -H              Display this help message
 
 Example:
-  node index.js --generate-hashes
+  node index.js --generate-hashes --batch-size 5000
     `);
 }
 
-function main() {
+async function main() {
     const args = process.argv.slice(2);
 
     if (args.includes('--help') || args.includes('-h') || args.includes('-H')) {
@@ -69,8 +98,10 @@ function main() {
     }
 
     const generateHashes = args.includes('--generate-hashes');
+    const batchSizeIndex = args.indexOf('--batch-size');
+    const batchSize = batchSizeIndex !== -1 ? parseInt(args[batchSizeIndex + 1]) : 10000;
 
-    if (generateHashes){
+    if (generateHashes) {
         const prefixes = [
             '0112', '0113', '0114', '0115',
             '0700', '0701', '0702', '0703', '0704', '0705', '0706', '0707', '0708', '0709',
@@ -82,15 +113,33 @@ function main() {
             '0790', '0791', '0792', '0793', '0794', '0795', '0796', '0797', '0798', '0799'
         ];
 
-        prefixes.forEach(prefix => {
+        for (const prefix of prefixes) {
             const numbers = generateNumbers(prefix.substring(1)); // Remove the leading '0'
-            const hashedNumbers = generateHashedNumbers(numbers, );
-            writeNumbersToFile(hashedNumbers, prefix);
-        });
+            const hashedNumbers = generateHashedNumbers(numbers);
+            await saveNumbersToMongo(hashedNumbers, prefix, batchSize);
+        }
 
         console.log('All number generation complete.');
     }
-
+    // Start the Express server
+    app.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+    });
 }
 
-main();
+app.get('/search/:hash', async (req, res) => {
+    try {
+        const { hash } = req.params;
+        const result = await HashModel.findOne({ hash });
+        if (result) {
+            res.json({ found: true, phoneNumber: result.phoneNumber });
+        } else {
+            res.status(404).json({ found: false });
+        }
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: 'An error occurred while searching' });
+    }
+});
+
+main().then();
